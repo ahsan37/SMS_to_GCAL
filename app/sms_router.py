@@ -1,5 +1,5 @@
 import logging
-from fastapi import APIRouter, Request, Header, HTTPException, Response
+from fastapi import APIRouter, Request, Header, HTTPException, Response, FastAPI
 from twilio.request_validator import RequestValidator
 from twilio.twiml.messaging_response import MessagingResponse
 from .config import settings
@@ -13,6 +13,11 @@ import io
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+app = FastAPI()
+
+@app.head("/sms")
+async def sms_head():
+    return Response(status_code=200)
 
 @router.post("/sms")
 async def sms_webhook(
