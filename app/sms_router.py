@@ -6,6 +6,7 @@ from .config import settings
 from .llm_parser import parse_event
 from .google_client import get_calendar_service, get_drive_service
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import requests
 from requests.auth import HTTPBasicAuth
 from googleapiclient.http import MediaIoBaseUpload
@@ -64,8 +65,16 @@ async def sms_webhook(
         if "end" in ev:
             event["end"] = {"dateTime": ev["end"], "timeZone": settings.TIMEZONE}
         else:
+            pacific_tz = ZoneInfo(settings.TIMEZONE)
             dt = datetime.fromisoformat(start)
-            end_iso = (dt + timedelta(minutes=ev.get("durationMinutes", 60))).isoformat()
+            
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=pacific_tz)
+            else:
+                dt = dt.astimezone(pacific_tz)
+            
+            end_dt = dt + timedelta(minutes=ev.get("durationMinutes", 60))
+            end_iso = end_dt.isoformat()
             event["end"] = {"dateTime": end_iso, "timeZone": settings.TIMEZONE}
 
         attachments = []
