@@ -14,9 +14,8 @@ import io
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-app = FastAPI()
 
-@app.head("/sms")
+@router.head("/sms")
 async def sms_head():
     return Response(status_code=200)
 
