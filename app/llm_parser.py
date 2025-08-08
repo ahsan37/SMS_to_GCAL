@@ -7,18 +7,26 @@ from zoneinfo import ZoneInfo
 client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
 def build_prompt(user_text: str) -> str:
-    pacific_tz = ZoneInfo(settings.TIMEZONE)
-    today = datetime.now(pacific_tz).date().isoformat()
+    local_tz = ZoneInfo(settings.TIMEZONE)
+    now_local = datetime.now(local_tz)
+    today = now_local.date().isoformat()
+    now_iso_with_tz = now_local.replace(microsecond=0).isoformat()
     return f"""
     You are an assistant that extracts structured calendar event data from natural language text messages.
 
-    Today's date is {today}. If no explicit date or time is mentioned in the message, assume the event is for today at the current time. If no duration is specified, assume 1 hour.
+    Timezone: {settings.TIMEZONE}. Today's date is {today} and the current datetime is {now_iso_with_tz} (use this timezone for relative phrases like "today", "tomorrow", or "now").
+
+    If no explicit date or time is mentioned in the message, assume the event starts at the current datetime above. If no duration is specified, assume 1 hour.
 
     Respond ONLY with JSON using these keys:
     - title (string)
     - description (string, optional)
-    - start (ISO8601 timestamp, e.g. '2025-07-06T14:00:00')
-    - end (ISO8601 timestamp) OR durationMinutes (integer, default to 60 if not specified)
+    - start (ISO8601 timestamp WITH timezone offset, e.g. '2025-07-06T14:00:00-07:00')
+    - end (ISO8601 timestamp WITH timezone offset) OR durationMinutes (integer, default to 60 if not specified)
+
+    Rules:
+    - Always include a timezone offset in timestamps (no 'Z' unless the time is truly UTC; prefer the offset for {settings.TIMEZONE}).
+    - Interpret all dates/times in the {settings.TIMEZONE} timezone unless another timezone is explicitly stated in the message.
 
     Input message: \"{user_text}\"
     """

@@ -56,25 +56,32 @@ async def sms_webhook(
     try:
         ev = await parse_event(body)
         logger.info("LLM parsed event: %s", ev)
-        start = ev["start"]
+
+        local_tz = ZoneInfo(settings.TIMEZONE)
+
+        def ensure_local_iso8601(dt_str: str) -> str:
+            parsed = datetime.fromisoformat(dt_str)
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=local_tz)
+            else:
+                parsed = parsed.astimezone(local_tz)
+            return parsed.replace(microsecond=0).isoformat()
+
+        start_iso = ensure_local_iso8601(ev["start"])
+
         event = {
             "summary": ev["title"],
             "description": ev.get("description", ""),
-            "start": {"dateTime": start, "timeZone": settings.TIMEZONE},
+            "start": {"dateTime": start_iso, "timeZone": settings.TIMEZONE},
         }
+
         if "end" in ev:
-            event["end"] = {"dateTime": ev["end"], "timeZone": settings.TIMEZONE}
+            end_iso = ensure_local_iso8601(ev["end"])
+            event["end"] = {"dateTime": end_iso, "timeZone": settings.TIMEZONE}
         else:
-            pacific_tz = ZoneInfo(settings.TIMEZONE)
-            dt = datetime.fromisoformat(start)
-            
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=pacific_tz)
-            else:
-                dt = dt.astimezone(pacific_tz)
-            
-            end_dt = dt + timedelta(minutes=ev.get("durationMinutes", 60))
-            end_iso = end_dt.isoformat()
+            start_dt_local = datetime.fromisoformat(start_iso)
+            end_dt_local = start_dt_local + timedelta(minutes=ev.get("durationMinutes", 60))
+            end_iso = end_dt_local.replace(microsecond=0).isoformat()
             event["end"] = {"dateTime": end_iso, "timeZone": settings.TIMEZONE}
 
         attachments = []
@@ -120,7 +127,7 @@ async def sms_webhook(
             supportsAttachments=True
         ).execute()
         logger.info("Event created (ID=%s)", created.get("id"))
-        reply = f"Created \"{ev['title']}\" at {start}"
+        reply = f"Created \"{ev['title']}\" at {start_iso} ({settings.TIMEZONE})"
 
     except Exception as e:
         logger.exception("Failed to process SMS webhook")
