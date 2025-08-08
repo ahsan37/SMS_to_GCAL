@@ -58,16 +58,44 @@ async def sms_webhook(
         logger.info("LLM parsed event: %s", ev)
 
         local_tz = ZoneInfo(settings.TIMEZONE)
+        current_time = datetime.now(local_tz)
 
-        def ensure_local_iso8601(dt_str: str) -> str:
-            parsed = datetime.fromisoformat(dt_str)
-            if parsed.tzinfo is None:
-                parsed = parsed.replace(tzinfo=local_tz)
+        def ensure_local_iso8601(dt_str: str, fallback_to_now: bool = False) -> str:
+            try:
+                parsed = datetime.fromisoformat(dt_str)
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=local_tz)
+                else:
+                    parsed = parsed.astimezone(local_tz)
+                return parsed.replace(microsecond=0).isoformat()
+            except Exception as e:
+                if fallback_to_now:
+                    logger.warning("Invalid datetime '%s', using current time: %s", dt_str, e)
+                    return current_time.replace(microsecond=0).isoformat()
+                raise
+
+        # Check if the LLM returned a naive timestamp without time context
+        start_parsed = datetime.fromisoformat(ev["start"].replace('Z', '+00:00') if ev["start"].endswith('Z') else ev["start"])
+        logger.info("Analyzing LLM start time: '%s' (tzinfo: %s)", ev["start"], start_parsed.tzinfo)
+        
+        if start_parsed.tzinfo is None:
+            # If no timezone info AND the text doesn't contain explicit time references, use current time
+            time_keywords = ['at', 'pm', 'am', ':', 'tomorrow', 'today', 'tonight', 'morning', 'afternoon', 'evening']
+            has_time_context = any(word in body.lower() for word in time_keywords)
+            logger.info("Time context check - Message: '%s', Has time keywords: %s", body, has_time_context)
+            
+            if not has_time_context:
+                logger.info("No explicit time in message, using current time: %s instead of LLM suggestion: %s", 
+                           current_time.isoformat(), ev["start"])
+                start_iso = current_time.replace(microsecond=0).isoformat()
             else:
-                parsed = parsed.astimezone(local_tz)
-            return parsed.replace(microsecond=0).isoformat()
-
-        start_iso = ensure_local_iso8601(ev["start"])
+                logger.info("Time context found, using LLM suggestion with timezone correction")
+                start_iso = ensure_local_iso8601(ev["start"])
+        else:
+            logger.info("LLM provided timezone-aware timestamp, converting to local timezone")
+            start_iso = ensure_local_iso8601(ev["start"])
+            
+        logger.info("Final start time: %s (%s)", start_iso, settings.TIMEZONE)
 
         event = {
             "summary": ev["title"],
@@ -76,13 +104,18 @@ async def sms_webhook(
         }
 
         if "end" in ev:
+            logger.info("🏁 LLM provided end time: %s", ev["end"])
             end_iso = ensure_local_iso8601(ev["end"])
             event["end"] = {"dateTime": end_iso, "timeZone": settings.TIMEZONE}
         else:
+            duration_mins = ev.get("durationMinutes", 60)
+            logger.info("No end time provided, using duration: %d minutes", duration_mins)
             start_dt_local = datetime.fromisoformat(start_iso)
-            end_dt_local = start_dt_local + timedelta(minutes=ev.get("durationMinutes", 60))
+            end_dt_local = start_dt_local + timedelta(minutes=duration_mins)
             end_iso = end_dt_local.replace(microsecond=0).isoformat()
             event["end"] = {"dateTime": end_iso, "timeZone": settings.TIMEZONE}
+            
+        logger.info("Final end time: %s (%s)", event["end"]["dateTime"], settings.TIMEZONE)
 
         attachments = []
         if downloaded_files:
@@ -120,14 +153,29 @@ async def sms_webhook(
             logger.info("Built attachments: %s", attachments)
 
 
+        logger.info("Sending event to Google Calendar:")
+        logger.info("   Title: %s", event["summary"])
+        logger.info("   Start: %s (%s)", event["start"]["dateTime"], event["start"]["timeZone"])
+        logger.info("   End: %s (%s)", event["end"]["dateTime"], event["end"]["timeZone"])
+        logger.info("   Calendar ID: %s", settings.CALENDAR_ID)
+        
         cal_svc = get_calendar_service()
         created = cal_svc.events().insert(
             calendarId=settings.CALENDAR_ID,
             body=event,
             supportsAttachments=True
         ).execute()
-        logger.info("Event created (ID=%s)", created.get("id"))
-        reply = f"Created \"{ev['title']}\" at {start_iso} ({settings.TIMEZONE})"
+        
+        event_id = created.get("id")
+        event_link = created.get("htmlLink", "")
+        logger.info(" Event successfully created!")
+        logger.info("   Event ID: %s", event_id)
+        logger.info("   Event URL: %s", event_link)
+        
+        # Parse the start time for a friendly reply
+        start_dt = datetime.fromisoformat(start_iso)
+        friendly_time = start_dt.strftime("%I:%M %p on %m/%d/%Y").replace(" 0", " ").lstrip("0")
+        reply = f" Created \"{ev['title']}\" at {friendly_time} ({settings.TIMEZONE})"
 
     except Exception as e:
         logger.exception("Failed to process SMS webhook")
