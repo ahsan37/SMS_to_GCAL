@@ -1,5 +1,5 @@
 import logging
-from fastapi import FastAPI, Response
+from fastapi import FastAPI
 from .sms_router import router
 
 logging.basicConfig(
@@ -11,8 +11,9 @@ app = FastAPI(title="SMS → Google Calendar Bot")
 
 
 @app.get("/health")
-def health_head():
-    return Response(status_code=200)
+@app.head("/health")
+def health():
+    return {"status": "ok"}
 
 
 app.include_router(router)
