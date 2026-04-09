@@ -28,6 +28,7 @@ def build_prompt(user_text: str) -> str:
     - description (string, optional)
     - start (ISO8601 timestamp WITH timezone offset, e.g. '2025-07-06T14:00:00-07:00')
     - end (ISO8601 timestamp WITH timezone offset) OR durationMinutes (integer, default to 60 if not specified)
+    - category (one of: travel, memories, work, personal, errands)
 
     Examples:
     - "work test" → start should be "{now_iso_with_tz}" (current time)
@@ -38,6 +39,7 @@ def build_prompt(user_text: str) -> str:
     1. ALWAYS include timezone offset in timestamps (never use 'Z' or naive timestamps)
     2. Use {settings.TIMEZONE} timezone for all times unless message specifies otherwise
     3. If message has NO TIME specified, use current datetime: {now_iso_with_tz}
+    4. category must be exactly one of: travel, memories, work, personal, errands
 
     Input message: \"{user_text}\"
     """
@@ -53,7 +55,7 @@ async def parse_event(text: str) -> dict:
                  current_time.isoformat(), settings.TIMEZONE)
 
     resp = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=settings.OPENAI_MODEL,
         messages=[
             {"role": "system", "content": prompt},
             {"role": "user",   "content": text},
@@ -69,6 +71,8 @@ async def parse_event(text: str) -> dict:
         raw = raw[:-3].strip()
         
     parsed_event = json.loads(raw)
+    if parsed_event.get("category") not in {"travel", "memories", "work", "personal", "errands"}:
+        parsed_event["category"] = "personal"
     logger.info("LLM parsed event: %s", parsed_event)
     
     # Log timezone analysis of the returned start time

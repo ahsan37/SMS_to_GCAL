@@ -16,6 +16,7 @@ Uses FastAPI, OpenAI, Twilio & Google Calendar + Drive (for photos) API.
    TWILIO_ACCOUNT_SID=your_twilio_account_sid
    TWILIO_AUTH_TOKEN=your_twilio_auth_token
    OPENAI_API_KEY=your_openai_api_key
+   OPENAI_MODEL=gpt-4o-mini
    GOOGLE_CLIENT_ID=your_google_client_id
    GOOGLE_CLIENT_SECRET=your_google_client_secret
    GOOGLE_REFRESH_TOKEN=your_google_refresh_token
@@ -29,6 +30,16 @@ Uses FastAPI, OpenAI, Twilio & Google Calendar + Drive (for photos) API.
 
 4. **Configure Twilio webhook:**
    - Point to: `https://your-domain.com/sms`
+
+## Event colors
+
+The parser also assigns each event a category and applies a Google Calendar color:
+
+- `travel`
+- `memories` (photos or text)
+- `work`
+- `personal`
+- `errands`
 
 ## Run
 

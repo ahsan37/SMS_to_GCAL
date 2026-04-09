@@ -15,6 +15,14 @@ import io
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+CATEGORY_TO_COLOR_ID = {
+    "travel": "9",
+    "memories": "5",
+    "work": "11",
+    "personal": "3",
+    "errands": "10",
+}
+
 @router.head("/sms")
 async def sms_head():
     return Response(status_code=200)
@@ -100,6 +108,7 @@ async def sms_webhook(
             "summary": ev["title"],
             "description": ev.get("description", ""),
             "start": {"dateTime": start_iso, "timeZone": settings.TIMEZONE},
+            "colorId": CATEGORY_TO_COLOR_ID.get(ev.get("category"), "3"),
         }
 
         if "end" in ev:
@@ -156,6 +165,7 @@ async def sms_webhook(
         logger.info("   Title: %s", event["summary"])
         logger.info("   Start: %s (%s)", event["start"]["dateTime"], event["start"]["timeZone"])
         logger.info("   End: %s (%s)", event["end"]["dateTime"], event["end"]["timeZone"])
+        logger.info("   Category: %s -> colorId=%s", ev.get("category", "personal"), event["colorId"])
         logger.info("   Calendar ID: %s", settings.CALENDAR_ID)
         
         cal_svc = get_calendar_service()
